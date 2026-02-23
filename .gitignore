@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.cache/
+.conda/
+*.egg-info/
+
+runtime/output/
+runtime/jobs/*.lock
+runtime/jobs/*.sqlite3
+logs/*.log
+
+.venv/

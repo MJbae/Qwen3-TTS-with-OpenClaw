@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-qwen3-tts-cli"
+version = "0.1.0"
+description = "Local-only CLI service for Qwen3-TTS voice cloning and synthesis"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Local Qwen3-TTS" }]
+dependencies = [
+  "numpy",
+  "qwen-tts",
+  "torch",
+  "torchaudio",
+  "soundfile",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+qtts = "qtts.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

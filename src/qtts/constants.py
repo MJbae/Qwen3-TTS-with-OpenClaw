@@ -1,0 +1,15 @@
+from pathlib import Path
+
+DEFAULT_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
+DEFAULT_LANGUAGE = "Auto"
+DEFAULT_MAX_NEW_TOKENS = 1024
+DEFAULT_TIMEOUT_SEC = 180
+DEFAULT_MAX_RETRIES = 2
+MIN_REF_AUDIO_SEC = 2.5
+
+RUNTIME_ROOT = Path("runtime")
+VOICES_DIRNAME = "voices"
+JOBS_DIRNAME = "jobs"
+OUTPUT_DIRNAME = "output"
+LOGS_ROOT = Path("logs")
+QUEUE_DB_NAME = "queue.sqlite3"

@@ -1,7 +1,6 @@
 # Local Qwen3-TTS CLI
 
 로컬 단일 머신에서 Qwen3-TTS 음성 클론과 TTS 합성을 수행하는 CLI 프로젝트입니다.
-이 문서는 **`/Users/bot/tts-server` 머신/경로 전용 운영 문서**입니다.
 
 - 로컬 전용
 - CLI 전용

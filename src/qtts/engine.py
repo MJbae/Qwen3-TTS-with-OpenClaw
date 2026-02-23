@@ -93,31 +93,46 @@ class QwenTTSEngine:
         x_vector_only_mode: bool = False,
     ) -> Any:
         self._load_model()
+        attempts = [
+            {
+                "ref_audio": str(ref_audio_path),
+                "ref_text": ref_text,
+                "x_vector_only_mode": x_vector_only_mode,
+            },
+            {
+                "ref_audio": str(ref_audio_path),
+                "ref_text": ref_text,
+            },
+            {
+                "ref_audio_path": str(ref_audio_path),
+                "ref_text": ref_text,
+                "x_vector_only_mode": x_vector_only_mode,
+            },
+            {
+                "ref_audio_path": str(ref_audio_path),
+                "ref_text": ref_text,
+            },
+        ]
 
-        try:
-            return self._model.create_voice_clone_prompt(
-                ref_audio_path=str(ref_audio_path),
-                ref_text=ref_text,
-                x_vector_only_mode=x_vector_only_mode,
-            )
-        except TypeError:
+        last_error: Exception | None = None
+        for kwargs in attempts:
             try:
-                return self._model.create_voice_clone_prompt(
-                    ref_audio_path=str(ref_audio_path),
-                    ref_text=ref_text,
-                )
+                return self._model.create_voice_clone_prompt(**kwargs)
+            except TypeError as exc:
+                last_error = exc
+                continue
             except Exception as exc:  # noqa: BLE001
                 raise QTTSError(
                     ErrorCode.SYNTHESIS_FAIL,
                     "failed to build voice clone prompt",
                     cause=exc,
                 ) from exc
-        except Exception as exc:  # noqa: BLE001
-            raise QTTSError(
-                ErrorCode.SYNTHESIS_FAIL,
-                "failed to build voice clone prompt",
-                cause=exc,
-            ) from exc
+
+        raise QTTSError(
+            ErrorCode.SYNTHESIS_FAIL,
+            "failed to build voice clone prompt",
+            cause=last_error,
+        )
 
     def _seed(self, seed: int | None) -> None:
         import numpy as np  # type: ignore

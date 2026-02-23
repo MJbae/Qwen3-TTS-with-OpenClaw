@@ -1,73 +1,87 @@
 # Local Qwen3-TTS CLI
 
-로컬 단일 머신에서 Qwen3-TTS 음성 클론과 TTS 합성을 수행하는 CLI 프로젝트입니다.
+로컬 단일 머신 환경에서 Qwen3-TTS 기반 음성 클론과 합성을 수행하는 CLI 도구입니다.
 
-- 로컬 전용
-- CLI 전용
-- 단일 워커 큐(동시성 1)
-- Nearline 처리(비실시간)
+## 개요
+- 로컬 전용 TTS/Voice Clone 워크플로
+- 웹 UI 없이 CLI 명령만 제공
+- 단건 합성, 배치 합성, SQLite 기반 로컬 큐 지원
+- 단일 워커 정책(동시성 1)
 
-## 1. 주요 기능
-- `voice-id` 생성/재사용 (`clone create`)
-- 단건 합성 (`speak`)
-- 배치 합성 (`batch`)
-- 음성 목록/삭제 (`voices list`, `voices delete`)
-- 로컬 큐 워커 (`serve start`, `job submit/status/fetch`)
-- 상태 점검 (`doctor`)
+## 범위 및 제약
+- 실시간(저지연) 응답 보장은 목표가 아닙니다.
+- 고성능 다중 동시 처리 대신 Nearline 처리에 초점을 둡니다.
+- 원격 서버/원격 GPU 없이 로컬 실행을 전제로 합니다.
 
-## 2. 디렉터리 구조
-실행 시 자동 생성/사용됩니다.
+## 주요 기능
+- `clone create`: `voice-id` 생성/재사용
+- `speak`: 단건 합성
+- `batch`: 텍스트 파일(줄당 1문장) 배치 합성
+- `voices list/delete`: 화자 목록/삭제
+- `serve start` + `job submit/status/fetch`: 로컬 큐 워커/잡 처리
+- `doctor`: 의존성 및 런타임 상태 점검
 
-- `runtime/voices/`
-- `runtime/jobs/`
-- `runtime/output/`
-- `logs/`
-
-## 3. 요구사항
-- macOS Intel (검증 환경)
+## 요구사항
 - Python 3.10+
-- conda (이 문서 기준 운영 환경)
+- `sox` 실행 파일이 PATH에 있어야 함
+- (권장) conda 또는 venv
 
-## 4. 설치
-### 4.1 권장: 프로젝트 전용 env 생성
+## 설치
+
+### 방법 1) 일반 설치 (권장 시작점)
 ```bash
-conda create -y -p /Users/bot/tts-server/.conda/qtts python=3.10
-conda activate /Users/bot/tts-server/.conda/qtts
+python -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -e .[dev]
 ```
 
-### 4.2 의존성 설치 (이 머신 검증 순서)
-`pyproject.toml`에는 일반 의존성 집합이 정의되어 있지만, 이 머신에서는 `qwen-tts` 의존 체인
-(`librosa/numba/llvmlite`) 설치 충돌을 피하기 위해 아래 순서를 사용합니다.
+또는 conda:
+```bash
+conda create -n qtts python=3.10 -y
+conda activate qtts
+pip install --upgrade pip
+pip install -e .[dev]
+```
+
+### 방법 2) qwen-tts 의존성 충돌 시(대안)
+일부 환경에서 `qwen-tts` 설치 시 `librosa/numba/llvmlite` 충돌이 날 수 있습니다.
+그 경우 아래 순서를 사용하세요.
 
 ```bash
 pip install numpy torch==2.2.2 torchaudio==2.2.2 soundfile pytest transformers==4.57.3 accelerate==1.12.0
 pip install librosa==0.10.2.post1 numba==0.59.1 llvmlite==0.42.0 scipy scikit-learn joblib pooch soxr audioread lazy_loader msgpack
 pip install onnxruntime einops sox qwen-tts --no-deps
 pip install -e . --no-deps
-conda install -y -c conda-forge sox
 ```
 
-### 4.3 실행 PATH 설정
-`sox` 바이너리와 `qtts` 엔트리포인트를 우선 사용하도록 PATH를 설정합니다.
-
+### SoX 설치
+- macOS(Homebrew):
 ```bash
-export PATH=/Users/bot/tts-server/.conda/qtts/bin:$PATH
+brew install sox
+```
+- conda:
+```bash
+conda install -c conda-forge sox
+```
+- Ubuntu/Debian:
+```bash
+sudo apt-get update && sudo apt-get install -y sox libsox-fmt-all
 ```
 
-## 5. 빠른 시작
-### 5.1 상태 점검
+## 빠른 시작
+
+### 1) 환경 점검
 ```bash
 qtts doctor
 ```
 
-### 5.2 스모크 합성 점검(선택)
-`doctor`에서 실제 합성까지 확인할 때 사용합니다.
-
+선택: 실제 합성 스모크 테스트
 ```bash
 qtts doctor --run-smoke --voice-id myvoice --smoke-text "Doctor smoke test sentence."
 ```
 
-### 5.3 음성 클론 생성
+### 2) 음성 클론 생성
 ```bash
 qtts clone create \
   --voice-id myvoice \
@@ -75,7 +89,7 @@ qtts clone create \
   --ref-text "This is a reference sentence for voice clone."
 ```
 
-### 5.4 단건 합성
+### 3) 단건 합성
 ```bash
 qtts speak \
   --voice-id myvoice \
@@ -83,9 +97,7 @@ qtts speak \
   --out ./runtime/output/myvoice_test.wav
 ```
 
-### 5.5 배치 합성
-`input.txt`는 줄당 1문장 형식입니다.
-
+### 4) 배치 합성
 ```bash
 qtts batch \
   --voice-id myvoice \
@@ -93,23 +105,23 @@ qtts batch \
   --out-dir ./runtime/output/batch
 ```
 
-## 6. 큐 모드 사용법
-### 6.1 워커 시작
+## 큐 모드
+
+### 워커 시작
 ```bash
 qtts serve start --queue runtime/jobs/queue.sqlite3
 ```
 
-### 6.2 잡 제출/조회/결과 수집
+### 잡 제출/조회/결과 수집
 ```bash
 qtts job submit --queue runtime/jobs/queue.sqlite3 --voice-id myvoice --text "Queue test"
 qtts job status --queue runtime/jobs/queue.sqlite3 --job-id <job_id>
 qtts job fetch --queue runtime/jobs/queue.sqlite3 --job-id <job_id> --out ./runtime/output/job.wav
 ```
 
-## 7. 전체 명령
+## CLI 명령 목록
 ```bash
 qtts doctor
-qtts doctor --run-smoke --voice-id <id> --smoke-text "<text>"
 qtts clone create --voice-id <id> --ref-audio <wav> --ref-text "<text>"
 qtts speak --voice-id <id> --text "<text>" --out <wav>
 qtts batch --voice-id <id> --input <txt> --out-dir <dir>
@@ -121,7 +133,32 @@ qtts job status --job-id <id>
 qtts job fetch --job-id <id> --out <wav>
 ```
 
-## 8. 공통 오류 코드
+## 자주 쓰는 옵션
+공통 합성 명령(`doctor --run-smoke`, `speak`, `batch`, `serve start`)에서 사용:
+- `--language`
+- `--seed`
+- `--max-new-tokens`
+- `--timeout-sec`
+- `--retries`
+- `--split-max-chars`
+
+전역 옵션:
+- `--runtime-root`: `runtime` 기본 경로 변경
+- `--model-id`: 기본 `Qwen/Qwen3-TTS-12Hz-0.6B-Base`
+- `--device`: 기본 `cpu`
+- `--attn-implementation`
+- `--verbose`
+
+## 런타임 경로
+실행 시 아래 디렉터리를 자동 생성/사용합니다.
+- `runtime/voices/`
+- `runtime/jobs/`
+- `runtime/output/`
+- `logs/`
+
+참고: `--runtime-root`는 `runtime/*` 경로에 적용되며, 로그는 기본적으로 `logs/qtts.log`를 사용합니다.
+
+## 오류 코드
 - `INVALID_INPUT`
 - `AUDIO_VALIDATION_FAIL`
 - `VOICE_NOT_FOUND`
@@ -135,27 +172,20 @@ qtts job fetch --job-id <id> --out <wav>
 - `JOB_NOT_READY`
 - `INTERNAL_ERROR`
 
-## 9. 테스트
+## 테스트
 ```bash
 python -m pytest -q
 ```
 
-## 10. 트러블슈팅
-### 10.1 `SoX could not be found!`
+## 트러블슈팅
+
+### `SoX could not be found!`
 - 원인: `sox` 실행 파일이 PATH에 없음
-- 해결:
-```bash
-conda install -y -c conda-forge sox
-```
+- 해결: 위 설치 섹션의 SoX 설치 후 재실행
 
-### 10.2 `OMP: Error #179: Can't open SHM2`
-- 원인: 일부 제한된 실행 환경(샌드박스/격리 실행)에서 OpenMP 공유메모리 접근 실패
-- 해결: 일반 로컬 터미널(권한 제한 없는 세션)에서 실행
+### `OMP: Error #179: Can't open SHM2`
+- 원인: 일부 샌드박스/격리 환경에서 OpenMP 공유메모리 접근이 차단됨
+- 해결: 일반 로컬 터미널 세션에서 실행
 
-### 10.3 `flash-attn is not installed` 경고
-- 의미: 성능 경고이며 CPU 기본 실행에는 치명적이지 않음
-
-## 11. 운영 메모
-- `runtime/voices/<voice-id>/prompt.json`에 voice metadata/prompt cache 저장
-- 로그 파일: `logs/qtts.log` (JSON lines)
-- 배치/큐는 실패 항목 재시도 가능 정책을 적용
+### `flash-attn is not installed` 경고
+- 의미: 성능 관련 경고입니다. CPU 기본 동작에는 필수는 아닙니다.

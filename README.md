@@ -105,6 +105,20 @@ qtts batch \
   --out-dir ./runtime/output/batch
 ```
 
+## 1.7B CPU-only 운영 가이드
+- 기본 모델은 `Qwen/Qwen3-TTS-12Hz-1.7B-Base`입니다.
+- CPU-only 환경에서는 0.6B 대비 추론 시간이 유의미하게 증가할 수 있습니다.
+- 장문 합성은 `--split-max-chars` 기본값(180) 기준으로 자동 분할되어 Nearline 처리에 맞춰 동작합니다.
+- 속도/메모리 이슈가 있으면 즉시 0.6B fallback을 사용하세요.
+
+```bash
+qtts speak \
+  --model-id Qwen/Qwen3-TTS-12Hz-0.6B-Base \
+  --voice-id myvoice \
+  --text "Fallback test sentence." \
+  --out ./runtime/output/myvoice_fallback.wav
+```
+
 ## 큐 모드
 
 ### 워커 시작
@@ -140,12 +154,16 @@ qtts job fetch --job-id <id> --out <wav>
 - `--max-new-tokens`
 - `--timeout-sec`
 - `--retries`
-- `--split-max-chars`
+- `--split-max-chars`: 기본 `180`
 
 전역 옵션:
 - `--runtime-root`: `runtime` 기본 경로 변경
-- `--model-id`: 기본 `Qwen/Qwen3-TTS-12Hz-0.6B-Base`
+- `--model-id`: 기본 `Qwen/Qwen3-TTS-12Hz-1.7B-Base`
 - `--device`: 기본 `cpu`
+- `--dtype`: 기본 `float32` (CPU 권장값)
+- `--cpu-threads`: 기본 자동(`None`)
+- `--cpu-interop-threads`: 기본 `1`
+- `--low-cpu-mem-usage` / `--no-low-cpu-mem-usage`: 기본 `--low-cpu-mem-usage`
 - `--attn-implementation`
 - `--verbose`
 

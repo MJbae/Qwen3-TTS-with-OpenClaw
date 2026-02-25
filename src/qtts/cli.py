@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+from importlib import metadata as importlib_metadata
 import json
 import os
 import platform
@@ -15,10 +16,16 @@ from typing import Any
 
 from .config import RuntimePaths, resolve_runtime_paths
 from .constants import (
+    DEFAULT_CPU_INTEROP_THREADS,
+    DEFAULT_CPU_THREADS,
+    DEFAULT_DEVICE,
+    DEFAULT_DTYPE,
     DEFAULT_LANGUAGE,
+    DEFAULT_LOW_CPU_MEM_USAGE,
     DEFAULT_MAX_NEW_TOKENS,
     DEFAULT_MAX_RETRIES,
     DEFAULT_MODEL_ID,
+    DEFAULT_SPLIT_MAX_CHARS,
     DEFAULT_TIMEOUT_SEC,
     QUEUE_DB_NAME,
 )
@@ -49,11 +56,38 @@ def resolve_queue_db_path(queue_arg: str | None, runtime_paths: RuntimePaths) ->
     return raw.resolve()
 
 
+def is_cpu_like_device(device: Any) -> bool:
+    if isinstance(device, str):
+        normalized = device.strip().lower()
+        return normalized == "cpu" or normalized.startswith("cpu:")
+    return False
+
+
+def get_total_ram_gib() -> float | None:
+    if os.name == "nt" or not hasattr(os, "sysconf"):
+        return None
+    try:
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        phys_pages = os.sysconf("SC_PHYS_PAGES")
+    except (OSError, ValueError, TypeError):
+        return None
+
+    if not isinstance(page_size, int) or not isinstance(phys_pages, int):
+        return None
+    if page_size <= 0 or phys_pages <= 0:
+        return None
+    return (page_size * phys_pages) / float(1024**3)
+
+
 def build_service(args, voice_store: VoiceStore, logger) -> SynthesisService:
     engine = QwenTTSEngine(
         model_id=args.model_id,
         device=args.device,
         attn_implementation=args.attn_implementation,
+        dtype=getattr(args, "dtype", DEFAULT_DTYPE),
+        low_cpu_mem_usage=getattr(args, "low_cpu_mem_usage", DEFAULT_LOW_CPU_MEM_USAGE),
+        cpu_threads=getattr(args, "cpu_threads", DEFAULT_CPU_THREADS),
+        cpu_interop_threads=getattr(args, "cpu_interop_threads", DEFAULT_CPU_INTEROP_THREADS),
     )
     return SynthesisService(voice_store=voice_store, engine=engine, logger=logger)
 
@@ -70,12 +104,84 @@ def run_doctor(args, runtime_paths: RuntimePaths, logger) -> int:
         }
     )
 
-    for module_name in ("qwen_tts", "torch", "torchaudio", "soundfile"):
+    try:
+        importlib.import_module("qwen_tts")
+        try:
+            qwen_tts_version = importlib_metadata.version("qwen-tts")
+            checks.append(
+                {
+                    "name": "import_qwen_tts",
+                    "ok": True,
+                    "detail": f"ok (qwen-tts {qwen_tts_version})",
+                }
+            )
+        except importlib_metadata.PackageNotFoundError:
+            checks.append(
+                {
+                    "name": "import_qwen_tts",
+                    "ok": False,
+                    "detail": "qwen-tts package metadata not found",
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            checks.append({"name": "import_qwen_tts", "ok": False, "detail": str(exc)})
+    except Exception as exc:  # noqa: BLE001
+        checks.append({"name": "import_qwen_tts", "ok": False, "detail": str(exc)})
+
+    for module_name in ("torch", "torchaudio", "soundfile"):
         try:
             importlib.import_module(module_name)
             checks.append({"name": f"import_{module_name}", "ok": True, "detail": "ok"})
         except Exception as exc:  # noqa: BLE001
             checks.append({"name": f"import_{module_name}", "ok": False, "detail": str(exc)})
+
+    sox_path = shutil.which("sox")
+    checks.append(
+        {
+            "name": "command_sox",
+            "ok": bool(sox_path),
+            "detail": sox_path or "sox not found in PATH",
+        }
+    )
+
+    total_ram_gib = get_total_ram_gib()
+    if total_ram_gib is None:
+        checks.append(
+            {
+                "name": "system_ram_gib",
+                "ok": True,
+                "detail": "unavailable",
+            }
+        )
+    elif total_ram_gib < 12:
+        checks.append(
+            {
+                "name": "system_ram_gib",
+                "ok": True,
+                "detail": f"warning: {total_ram_gib:.2f} GiB (<12 GiB recommended for 1.7B CPU)",
+            }
+        )
+    else:
+        checks.append(
+            {
+                "name": "system_ram_gib",
+                "ok": True,
+                "detail": f"{total_ram_gib:.2f} GiB",
+            }
+        )
+
+    cpu_like_device = is_cpu_like_device(args.device)
+    checks.append(
+        {
+            "name": "device_cpu_only",
+            "ok": cpu_like_device,
+            "detail": (
+                f"{args.device!r} is cpu-like"
+                if cpu_like_device
+                else f"{args.device!r} is not cpu-like; this project targets CPU-only inference"
+            ),
+        }
+    )
 
     runtime_paths.ensure()
     for label, path in (
@@ -361,14 +467,40 @@ def add_common_synthesis_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-new-tokens", type=int, default=DEFAULT_MAX_NEW_TOKENS)
     parser.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
     parser.add_argument("--retries", type=int, default=DEFAULT_MAX_RETRIES)
-    parser.add_argument("--split-max-chars", type=int, default=240)
+    parser.add_argument("--split-max-chars", type=int, default=DEFAULT_SPLIT_MAX_CHARS)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="qtts", description="Local Qwen3-TTS CLI")
     parser.add_argument("--runtime-root", default="runtime", help="runtime root directory")
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID, help="Qwen3-TTS model id/path")
-    parser.add_argument("--device", default="cpu", help="inference device map (default: cpu)")
+    parser.add_argument("--device", default=DEFAULT_DEVICE, help="inference device map (default: cpu)")
+    parser.add_argument(
+        "--dtype",
+        default=DEFAULT_DTYPE,
+        choices=("float32", "bfloat16", "float16"),
+        help="model dtype for load/generation",
+    )
+    parser.add_argument(
+        "--low-cpu-mem-usage",
+        dest="low_cpu_mem_usage",
+        action="store_true",
+        default=DEFAULT_LOW_CPU_MEM_USAGE,
+        help="use low CPU memory loading mode",
+    )
+    parser.add_argument(
+        "--no-low-cpu-mem-usage",
+        dest="low_cpu_mem_usage",
+        action="store_false",
+        help="disable low CPU memory loading mode",
+    )
+    parser.add_argument("--cpu-threads", type=int, default=DEFAULT_CPU_THREADS, help="torch CPU threads")
+    parser.add_argument(
+        "--cpu-interop-threads",
+        type=int,
+        default=DEFAULT_CPU_INTEROP_THREADS,
+        help="torch CPU interop threads",
+    )
     parser.add_argument("--attn-implementation", default=None, help="optional attention implementation")
     parser.add_argument("--verbose", action="store_true")
 

@@ -18,11 +18,12 @@
 
 ## 2) 구현 전략 (현실성 우선)
 
-- 모델 우선순위: `Qwen3-TTS-0.6B` (1.7B는 2차 검토)
+- 모델 우선순위: `Qwen3-TTS-1.7B` CPU-local 기본, `0.6B`는 fallback
 - 추론 디바이스: CPU-only 기본
 - 운영 형태: 단일 프로세스 + 요청 큐(파일/SQLite)
 - 결과 전달: 파일 출력(WAV) + 잡 상태 조회
 - 품질/속도 트레이드오프를 문서화하고 Nearline 처리로 정의
+- fallback 정책: 성능/메모리 이슈 시 `--model-id Qwen/Qwen3-TTS-12Hz-0.6B-Base`로 즉시 전환
 
 ## 3) 단계별 작업 계획
 
@@ -114,6 +115,7 @@ qtts job fetch --job-id <id> --out <wav>
 - [ ] 기본 TTS 1문장 WAV 출력 성공
 - [ ] 음성 클론 1회 생성 성공
 - [ ] 생성된 `voice-id` 재사용 합성 성공
+- [ ] fallback 모델(`0.6B`) 오버라이드 실행 확인
 
 ### C. CLI 기능 구현
 - [ ] `clone create` 구현
@@ -148,8 +150,8 @@ qtts job fetch --job-id <id> --out <wav>
 
 ## 6) 리스크와 대응
 
-- 리스크: CPU-only 속도 한계
-  - 대응: Nearline 정책, 배치 처리, 장문 분할
+- 리스크: 1.7B CPU-only 속도/메모리 한계
+  - 대응: Nearline 정책, 배치 처리, 장문 분할, 필요 시 0.6B fallback 즉시 전환
 - 리스크: macOS Intel 의존성 충돌
   - 대응: 버전 매트릭스 고정, 환경 재현 스크립트 제공
 - 리스크: 클론 품질 편차

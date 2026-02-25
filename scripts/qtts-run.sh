@@ -19,4 +19,6 @@ if [[ ! -d "$ENV_PATH" ]]; then
   exit 3
 fi
 
-exec conda run -p "$ENV_PATH" qtts "$@"
+# Use module execution with PYTHONPATH bound to this workspace so copied envs
+# do not accidentally execute a stale editable install from another directory.
+exec conda run --no-capture-output -p "$ENV_PATH" env PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" python -m qtts.cli "$@"
